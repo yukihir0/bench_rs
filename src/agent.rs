@@ -19,12 +19,21 @@ impl Agent {
     {
         self.client.get(path.into()).await
     }
+
+    pub async fn post<S, T>(&self, path: S, payload: T) -> Result<surf::Response, surf::Error>
+    where
+        S: Into<String>,
+        T: Into<surf::Body>,
+    {
+        self.client.post(path.into()).body(payload.into()).await
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::agent::*;
     use mockito;
+    use serde_json::json;
 
     #[async_std::test]
     async fn test_agent_get() -> surf::Result<()> {
@@ -43,6 +52,30 @@ mod tests {
         let agent = Agent::new(base_url);
         let mut response = agent.get(path).await?;
         assert_eq!(response.status(), surf::StatusCode::Ok);
+        assert_eq!(response.header(header_name).unwrap(), header_value);
+        assert_eq!(response.body_string().await?, body);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_agent_post() -> surf::Result<()> {
+        let base_url = &mockito::server_url();
+        let path = "/hello";
+        let payload = json!({ "hello": "world"});
+        let header_name = "content-type";
+        let header_value = "text/plain";
+        let body = r#"{"hello": "world"}"#;
+
+        let _m = mockito::mock("POST", path)
+            .with_status(surf::StatusCode::Created as usize)
+            .with_header(header_name, header_value)
+            .with_body(body)
+            .create();
+
+        let agent = Agent::new(base_url);
+        let mut response = agent.post(path, payload).await?;
+        assert_eq!(response.status(), surf::StatusCode::Created);
         assert_eq!(response.header(header_name).unwrap(), header_value);
         assert_eq!(response.body_string().await?, body);
 

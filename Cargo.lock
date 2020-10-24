@@ -243,6 +243,8 @@ version = "0.1.0"
 dependencies = [
  "async-std",
  "mockito",
+ "serde",
+ "serde_json",
  "surf",
  "url",
 ]
