@@ -1,3 +1,4 @@
+use crate::agent::*;
 use crate::benchmark::step::*;
 use crate::score::*;
 
@@ -14,9 +15,9 @@ impl BenchmarkScenario {
         self.steps.push(step);
     }
 
-    pub fn run(self, score: Score) -> BenchmarkScenarioResult {
+    pub async fn run(self, agent: Agent, score: Score) -> BenchmarkScenarioResult {
         for step in self.steps {
-            step(score.clone());
+            step(agent.clone(), score.clone()).await;
         }
 
         BenchmarkScenarioResult::new(score)
@@ -40,29 +41,74 @@ impl BenchmarkScenarioResult {
 #[cfg(test)]
 mod tests {
     use crate::benchmark::scenario::*;
+    use mockito;
+    use std::future::Future;
+    use std::pin::Pin;
 
-    #[test]
-    fn test_benchmark_scenario() {
+    #[async_std::test]
+    async fn test_benchmark_scenario() -> Result<(), ()> {
+        let base_url = &mockito::server_url();
+        let path = "/dummy";
+
+        let _m = mockito::mock("GET", path)
+            .with_status(surf::StatusCode::Ok as usize)
+            .create();
+
+        let agent = Agent::new(base_url);
+
         let score = Score::new();
         score.set_criterion("a", 1);
         score.set_criterion("b", 2);
         score.set_criterion("c", 3);
 
         let mut benchmark_scenario = BenchmarkScenario::new();
-        benchmark_scenario.add_benchmark_step(Box::new(|score| -> BenchmarkStepResult {
-            score.record("a");
-            BenchmarkStepResult::new(score)
-        }));
-        benchmark_scenario.add_benchmark_step(Box::new(|score| -> BenchmarkStepResult {
-            score.record("b");
-            BenchmarkStepResult::new(score)
-        }));
-        benchmark_scenario.add_benchmark_step(Box::new(|score| -> BenchmarkStepResult {
-            score.record("c");
-            BenchmarkStepResult::new(score)
-        }));
 
-        let benchmark_scenario_result = benchmark_scenario.run(score);
-        assert_eq!(benchmark_scenario_result.total_score(), 6);
+        fn step_a(
+            agent: Agent,
+            score: Score,
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+            Box::pin(async move {
+                let response = agent.get("/dummy").await;
+                assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
+
+                score.record("a");
+                BenchmarkStepResult::new(score)
+            })
+        }
+
+        fn step_b(
+            agent: Agent,
+            score: Score,
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+            Box::pin(async move {
+                let response = agent.get("/dummy").await;
+                assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
+
+                score.record("b");
+                BenchmarkStepResult::new(score)
+            })
+        }
+
+        fn step_c(
+            agent: Agent,
+            score: Score,
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+            Box::pin(async move {
+                let response = agent.get("/dummy").await;
+                assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
+
+                score.record("c");
+                BenchmarkStepResult::new(score)
+            })
+        }
+
+        benchmark_scenario.add_benchmark_step(step_a);
+        benchmark_scenario.add_benchmark_step(step_b);
+        benchmark_scenario.add_benchmark_step(step_c);
+
+        let benchmark_scenario_result = benchmark_scenario.run(agent, score);
+        assert_eq!(benchmark_scenario_result.await.total_score(), 6);
+
+        Ok(())
     }
 }
