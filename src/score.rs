@@ -15,19 +15,13 @@ impl Score {
         }
     }
 
-    pub fn set_criterion<S>(&self, key: S, value: usize)
-    where
-        S: Into<String>,
-    {
+    pub fn set_criterion(&self, key: impl Into<String>, value: usize) {
         if let Ok(mut criteria) = self.criteria.lock() {
             criteria.insert(key.into(), value);
         }
     }
 
-    pub fn record<S>(&self, key: S)
-    where
-        S: Into<String>,
-    {
+    pub fn record(&self, key: impl Into<String>) {
         if let Ok(mut records) = self.records.lock() {
             records.push(key.into());
         }

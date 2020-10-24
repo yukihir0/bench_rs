@@ -6,49 +6,46 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(base_url: &str) -> Agent {
+    pub fn new(base_url: impl Into<String>) -> Agent {
         let mut client = surf::client();
-        client.set_base_url(Url::parse(base_url).unwrap());
+        client.set_base_url(Url::parse(&base_url.into()).unwrap());
 
         Agent { client: client }
     }
 
-    pub async fn get<S>(&self, path: S) -> Result<surf::Response, surf::Error>
-    where
-        S: Into<String>,
-    {
+    pub async fn get(&self, path: impl Into<String>) -> Result<surf::Response, surf::Error> {
         self.client.get(path.into()).await
     }
 
-    pub async fn post<S, T>(&self, path: S, payload: T) -> Result<surf::Response, surf::Error>
-    where
-        S: Into<String>,
-        T: Into<surf::Body>,
-    {
+    pub async fn post(
+        &self,
+        path: impl Into<String>,
+        payload: impl Into<surf::Body>,
+    ) -> Result<surf::Response, surf::Error> {
         self.client.post(path.into()).body(payload.into()).await
     }
 
-    pub async fn put<S, T>(&self, path: S, payload: T) -> Result<surf::Response, surf::Error>
-    where
-        S: Into<String>,
-        T: Into<surf::Body>,
-    {
+    pub async fn put(
+        &self,
+        path: impl Into<String>,
+        payload: impl Into<surf::Body>,
+    ) -> Result<surf::Response, surf::Error> {
         self.client.put(path.into()).body(payload.into()).await
     }
 
-    pub async fn patch<S, T>(&self, path: S, payload: T) -> Result<surf::Response, surf::Error>
-    where
-        S: Into<String>,
-        T: Into<surf::Body>,
-    {
+    pub async fn patch(
+        &self,
+        path: impl Into<String>,
+        payload: impl Into<surf::Body>,
+    ) -> Result<surf::Response, surf::Error> {
         self.client.patch(path.into()).body(payload.into()).await
     }
 
-    pub async fn delete<S, T>(&self, path: S, payload: T) -> Result<surf::Response, surf::Error>
-    where
-        S: Into<String>,
-        T: Into<surf::Body>,
-    {
+    pub async fn delete(
+        &self,
+        path: impl Into<String>,
+        payload: impl Into<surf::Body>,
+    ) -> Result<surf::Response, surf::Error> {
         self.client.delete(path.into()).body(payload.into()).await
     }
 }

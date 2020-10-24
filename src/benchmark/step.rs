@@ -11,10 +11,7 @@ impl BenchmarkStepResult {
         BenchmarkStepResult { score: score }
     }
 
-    pub fn record<S>(&self, key: S)
-    where
-        S: Into<String>,
-    {
+    pub fn record(&self, key: impl Into<String>) {
         self.score.record(key);
     }
 
