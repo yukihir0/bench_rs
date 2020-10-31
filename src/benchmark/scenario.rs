@@ -1,5 +1,6 @@
 use crate::agent::*;
 use crate::benchmark::step::*;
+use crate::errors::*;
 use crate::score::*;
 
 pub struct BenchmarkScenario {
@@ -15,26 +16,30 @@ impl BenchmarkScenario {
         self.steps.push(step);
     }
 
-    pub async fn run(self, agent: Agent, score: Score) -> BenchmarkScenarioResult {
+    pub async fn run(self, agent: Agent, score: Score, errors: Errors) -> BenchmarkScenarioResult {
         for step in self.steps {
-            step(agent.clone(), score.clone()).await;
+            step(agent.clone(), score.clone(), errors.clone()).await;
         }
 
-        BenchmarkScenarioResult::new(score)
+        BenchmarkScenarioResult::new(score, errors)
     }
 }
 
 pub struct BenchmarkScenarioResult {
     score: Score,
+    errors: Errors,
 }
 
 impl BenchmarkScenarioResult {
-    pub fn new(score: Score) -> BenchmarkScenarioResult {
-        BenchmarkScenarioResult { score: score }
+    pub fn new(score: Score, errors: Errors) -> BenchmarkScenarioResult {
+        BenchmarkScenarioResult {
+            score: score,
+            errors: errors,
+        }
     }
 
     pub fn total_score(&self) -> usize {
-        self.score.total()
+        self.score.total() - self.errors.total_penalty_point()
     }
 }
 
@@ -61,44 +66,67 @@ mod tests {
         score.set_criterion("b", 2);
         score.set_criterion("c", 3);
 
+        let errors = Errors::new();
+
         let mut benchmark_scenario = BenchmarkScenario::new();
 
         fn step_a(
             agent: Agent,
             score: Score,
+            errors: Errors,
         ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
 
                 score.record("a");
-                BenchmarkStepResult::new(score)
+
+                errors.record(BenchmarkError::Penalty {
+                    cause: "error_a".into(),
+                    point: 1,
+                });
+
+                BenchmarkStepResult::new(score, errors)
             })
         }
 
         fn step_b(
             agent: Agent,
             score: Score,
+            errors: Errors,
         ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
 
                 score.record("b");
-                BenchmarkStepResult::new(score)
+
+                errors.record(BenchmarkError::Penalty {
+                    cause: "error_b".into(),
+                    point: 2,
+                });
+
+                BenchmarkStepResult::new(score, errors)
             })
         }
 
         fn step_c(
             agent: Agent,
             score: Score,
+            errors: Errors,
         ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
 
                 score.record("c");
-                BenchmarkStepResult::new(score)
+
+                errors.record(BenchmarkError::Penalty {
+                    cause: "error_c".into(),
+                    point: 3,
+                });
+
+                BenchmarkStepResult::new(score, errors)
             })
         }
 
@@ -106,8 +134,8 @@ mod tests {
         benchmark_scenario.add_benchmark_step(step_b);
         benchmark_scenario.add_benchmark_step(step_c);
 
-        let benchmark_scenario_result = benchmark_scenario.run(agent, score);
-        assert_eq!(benchmark_scenario_result.await.total_score(), 6);
+        let benchmark_scenario_result = benchmark_scenario.run(agent, score, errors).await;
+        assert_eq!(benchmark_scenario_result.total_score(), 0);
 
         Ok(())
     }

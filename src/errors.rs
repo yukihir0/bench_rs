@@ -16,24 +16,24 @@ impl PartialEq for BenchmarkError {
 }
 
 #[derive(Clone)]
-pub struct BenchmarkErrors {
+pub struct Errors {
     errors: Arc<Mutex<Vec<BenchmarkError>>>,
 }
 
-impl BenchmarkErrors {
-    pub fn new() -> BenchmarkErrors {
-        BenchmarkErrors {
+impl Errors {
+    pub fn new() -> Errors {
+        Errors {
             errors: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
-    pub fn add_error(&self, error: BenchmarkError) {
+    pub fn record(&self, error: BenchmarkError) {
         if let Ok(mut errors) = self.errors.lock() {
             errors.push(error);
         }
     }
 
-    pub fn total(&self) -> usize {
+    pub fn total_penalty_point(&self) -> usize {
         let mut total = 0;
 
         if let Ok(errors) = self.errors.lock() {
@@ -55,8 +55,8 @@ mod tests {
     use std::thread;
 
     #[test]
-    fn test_add_error() {
-        let errors = BenchmarkErrors::new();
+    fn test_record() {
+        let errors = Errors::new();
 
         let error1 = BenchmarkError::Fail {
             cause: "error1".into(),
@@ -80,12 +80,12 @@ mod tests {
             point: 6,
         };
 
-        errors.add_error(error1);
-        errors.add_error(error2);
-        errors.add_error(error3);
-        errors.add_error(error4);
-        errors.add_error(error5);
-        errors.add_error(error6);
+        errors.record(error1);
+        errors.record(error2);
+        errors.record(error3);
+        errors.record(error4);
+        errors.record(error5);
+        errors.record(error6);
 
         assert_eq!(
             errors.errors.lock().unwrap()[0].to_string(),
@@ -135,8 +135,8 @@ mod tests {
     }
 
     #[test]
-    fn test_total() {
-        let errors = BenchmarkErrors::new();
+    fn test_total_penalty_point() {
+        let errors = Errors::new();
 
         let error1 = BenchmarkError::Penalty {
             cause: "error1".into(),
@@ -151,27 +151,27 @@ mod tests {
             point: 3,
         };
 
-        errors.add_error(error1);
-        errors.add_error(error2);
-        errors.add_error(error3);
+        errors.record(error1);
+        errors.record(error2);
+        errors.record(error3);
 
-        assert_eq!(errors.total(), 6);
+        assert_eq!(errors.total_penalty_point(), 6);
     }
 
     #[test]
-    fn test_add_error_with_thread() {
+    fn test_record_with_thread() {
         let causes = vec![
             String::from("error1"),
             String::from("error2"),
             String::from("error3"),
         ];
-        let errors = BenchmarkErrors::new();
+        let errors = Errors::new();
         let mut handles = vec![];
 
         for cause in causes {
             let errors = errors.clone();
             let handle = thread::spawn(move || {
-                errors.add_error(BenchmarkError::Fail { cause: cause });
+                errors.record(BenchmarkError::Fail { cause: cause });
             });
             handles.push(handle);
         }
@@ -219,13 +219,13 @@ mod tests {
             String::from("error2"),
             String::from("error3"),
         ];
-        let errors = BenchmarkErrors::new();
+        let errors = Errors::new();
         let mut handles = vec![];
 
         for (i, cause) in causes.into_iter().enumerate() {
             let errors = errors.clone();
             let handle = thread::spawn(move || {
-                errors.add_error(BenchmarkError::Penalty {
+                errors.record(BenchmarkError::Penalty {
                     cause: cause,
                     point: i + 1,
                 });
@@ -237,6 +237,6 @@ mod tests {
             handle.join().unwrap();
         }
 
-        assert_eq!(errors.total(), 6);
+        assert_eq!(errors.total_penalty_point(), 6);
     }
 }
