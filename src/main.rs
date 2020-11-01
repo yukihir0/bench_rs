@@ -1,7 +1,7 @@
 extern crate bench_rs;
-
 #[macro_use]
 extern crate clap;
+extern crate env_logger;
 
 use anyhow::Result;
 use async_std;
@@ -10,6 +10,8 @@ use bench_rs::benchmark::*;
 use bench_rs::errors::*;
 use bench_rs::score::*;
 use clap::{App, Arg};
+use log;
+use std::env;
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -30,15 +32,18 @@ async fn main() -> Result<()> {
 
     let base_url = matches.value_of("base_url").unwrap();
 
+    env::set_var("RUST_LOG", "info");
+    env_logger::init();
+
     let agent = Agent::new(base_url);
     let score = Score::new();
     let errors = Errors::new();
     let benchmark = Benchmark::new(agent, score, errors);
     let benchmark_result = benchmark.start().await;
 
-    println!("total: {}", benchmark_result.total_score());
-    println!("gain: {}", benchmark_result.total_gain());
-    println!("lose: {}", benchmark_result.total_lose());
+    log::info!("total: {}", benchmark_result.total_score());
+    log::info!("gain: {}", benchmark_result.total_gain());
+    log::info!("lose: {}", benchmark_result.total_lose());
 
     Ok(())
 }
