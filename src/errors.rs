@@ -24,6 +24,10 @@ impl Errors {
         Errors { errors: Vec::new() }
     }
 
+    pub fn iter(&self) -> std::slice::Iter<'_, BenchmarkError> {
+        self.errors.iter()
+    }
+
     pub fn record(&mut self, error: BenchmarkError) {
         self.errors.push(error);
     }

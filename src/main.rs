@@ -41,6 +41,11 @@ async fn main() -> Result<()> {
     let benchmark = Benchmark::new(agent, score, errors);
     let benchmark_result = benchmark.start().await;
 
+    if benchmark_result.is_success() {
+        log::info!("Benchmark: Success");
+    } else {
+        log::info!("Benchmark: Failure");
+    }
     log::info!("total: {}", benchmark_result.total_score());
     log::info!("gain: {}", benchmark_result.total_gain());
     log::info!("lose: {}", benchmark_result.total_lose());

@@ -58,6 +58,14 @@ impl BenchmarkScenarioResult {
             .iter()
             .fold(0, |total, result| total + result.total_lose())
     }
+
+    pub fn is_success(&self) -> bool {
+        !self.is_failure()
+    }
+
+    pub fn is_failure(&self) -> bool {
+        self.step_results.iter().any(|result| result.is_failure())
+    }
 }
 
 #[cfg(test)]
@@ -155,6 +163,99 @@ mod tests {
         assert_eq!(benchmark_scenario_result.total_score(), 0);
         assert_eq!(benchmark_scenario_result.total_gain(), 6);
         assert_eq!(benchmark_scenario_result.total_lose(), 6);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_benchmark_scenario_result_is_success() -> Result<(), ()> {
+        let base_url = &mockito::server_url();
+        let path = "/dummy";
+
+        let _m = mockito::mock("GET", path)
+            .with_status(surf::StatusCode::Ok as usize)
+            .create();
+
+        let agent = Agent::new(base_url);
+
+        let mut score = Score::new();
+        score.set_criterion("a", 1);
+
+        let errors = Errors::new();
+
+        let mut benchmark_scenario = BenchmarkScenario::new();
+
+        fn step(
+            agent: Agent,
+            mut score: Score,
+            mut errors: Errors,
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+            Box::pin(async move {
+                let response = agent.get("/dummy").await;
+                assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
+
+                score.record("a");
+
+                errors.record(BenchmarkError::Penalty {
+                    cause: "error".into(),
+                    point: 1,
+                });
+
+                BenchmarkStepResult::new(score, errors)
+            })
+        }
+
+        benchmark_scenario.add_benchmark_step(step);
+
+        let benchmark_scenario_result = benchmark_scenario.run(agent, score, errors).await;
+        assert_eq!(benchmark_scenario_result.is_success(), true);
+        assert_eq!(benchmark_scenario_result.is_failure(), false);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_benchmark_scenario_result_is_failure() -> Result<(), ()> {
+        let base_url = &mockito::server_url();
+        let path = "/dummy";
+
+        let _m = mockito::mock("GET", path)
+            .with_status(surf::StatusCode::Ok as usize)
+            .create();
+
+        let agent = Agent::new(base_url);
+
+        let mut score = Score::new();
+        score.set_criterion("a", 1);
+
+        let errors = Errors::new();
+
+        let mut benchmark_scenario = BenchmarkScenario::new();
+
+        fn step(
+            agent: Agent,
+            mut score: Score,
+            mut errors: Errors,
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+            Box::pin(async move {
+                let response = agent.get("/dummy").await;
+                assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
+
+                score.record("a");
+
+                errors.record(BenchmarkError::Fail {
+                    cause: "error".into(),
+                });
+
+                BenchmarkStepResult::new(score, errors)
+            })
+        }
+
+        benchmark_scenario.add_benchmark_step(step);
+
+        let benchmark_scenario_result = benchmark_scenario.run(agent, score, errors).await;
+        assert_eq!(benchmark_scenario_result.is_success(), false);
+        assert_eq!(benchmark_scenario_result.is_failure(), true);
 
         Ok(())
     }
