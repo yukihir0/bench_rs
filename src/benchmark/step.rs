@@ -21,12 +21,8 @@ impl BenchmarkStepResult {
         }
     }
 
-    pub fn record(&self, key: impl Into<String>) {
-        self.score.record(key);
-    }
-
-    pub fn total_score(&self) -> usize {
-        self.score.total() - self.errors.total_penalty_point()
+    pub fn total_score(&self) -> isize {
+        self.score.total() as isize - self.errors.total_penalty_point() as isize
     }
 }
 
@@ -46,7 +42,7 @@ mod tests {
 
         let agent = Agent::new(base_url);
 
-        let score = Score::new();
+        let mut score = Score::new();
         score.set_criterion("a", 1);
         score.set_criterion("b", 2);
         score.set_criterion("c", 3);
@@ -55,8 +51,8 @@ mod tests {
 
         fn step(
             agent: Agent,
-            score: Score,
-            errors: Errors,
+            mut score: Score,
+            mut errors: Errors,
         ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
