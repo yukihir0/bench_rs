@@ -17,12 +17,12 @@ impl Score {
         }
     }
 
-    pub fn add_point_table(&mut self, key: impl Into<PointName>, value: PointUnit) {
-        self.point_table.insert(key.into(), value);
+    pub fn add_point_table(&mut self, point_name: impl Into<PointName>, point_unit: PointUnit) {
+        self.point_table.insert(point_name.into(), point_unit);
     }
 
-    pub fn record(&mut self, key: impl Into<PointName>) {
-        self.records.push(key.into());
+    pub fn record(&mut self, point_name: impl Into<PointName>) {
+        self.records.push(point_name.into());
     }
 
     pub fn total(&self) -> usize {
