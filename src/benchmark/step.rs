@@ -22,7 +22,15 @@ impl BenchmarkStepResult {
     }
 
     pub fn total_score(&self) -> isize {
-        self.score.total() as isize - self.errors.total_penalty_point() as isize
+        self.total_gain() - self.total_lose()
+    }
+
+    pub fn total_gain(&self) -> isize {
+        self.score.total() as isize
+    }
+
+    pub fn total_lose(&self) -> isize {
+        self.errors.total_penalty_point() as isize
     }
 }
 
@@ -73,6 +81,8 @@ mod tests {
 
         let benchmark_step_result = step(agent, score, errors).await;
         assert_eq!(benchmark_step_result.total_score(), 5);
+        assert_eq!(benchmark_step_result.total_gain(), 6);
+        assert_eq!(benchmark_step_result.total_lose(), 1);
 
         Ok(())
     }

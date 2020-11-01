@@ -37,6 +37,8 @@ async fn main() -> Result<()> {
     let benchmark_result = benchmark.start().await;
 
     println!("total: {}", benchmark_result.total_score());
+    println!("gain: {}", benchmark_result.total_gain());
+    println!("lose: {}", benchmark_result.total_lose());
 
     Ok(())
 }

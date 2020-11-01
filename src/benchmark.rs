@@ -40,43 +40,65 @@ impl Benchmark {
     }
 
     pub async fn start(self) -> BenchmarkResult {
+        let mut benchmark_result = BenchmarkResult::new();
+
         for scenario in self.prepare_scenarios {
-            scenario
-                .run(self.agent.clone(), self.score.clone(), self.errors.clone())
-                .await;
+            benchmark_result.add_scenario_result(
+                scenario
+                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
+                    .await,
+            );
         }
 
         for scenario in self.load_scenarios {
-            scenario
-                .run(self.agent.clone(), self.score.clone(), self.errors.clone())
-                .await;
+            benchmark_result.add_scenario_result(
+                scenario
+                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
+                    .await,
+            );
         }
 
         for scenario in self.validation_scenarios {
-            scenario
-                .run(self.agent.clone(), self.score.clone(), self.errors.clone())
-                .await;
+            benchmark_result.add_scenario_result(
+                scenario
+                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
+                    .await,
+            );
         }
 
-        BenchmarkResult::new(self.score, self.errors)
+        benchmark_result
     }
 }
 
 pub struct BenchmarkResult {
-    score: Score,
-    errors: Errors,
+    scenario_results: Vec<BenchmarkScenarioResult>,
 }
 
 impl BenchmarkResult {
-    pub fn new(score: Score, errors: Errors) -> BenchmarkResult {
+    pub fn new() -> BenchmarkResult {
         BenchmarkResult {
-            score: score,
-            errors: errors,
+            scenario_results: Vec::new(),
         }
     }
 
-    pub fn total_score(&self) -> usize {
-        self.score.total() - self.errors.total_penalty_point()
+    pub fn add_scenario_result(&mut self, result: BenchmarkScenarioResult) {
+        self.scenario_results.push(result);
+    }
+
+    pub fn total_score(&self) -> isize {
+        self.total_gain() - self.total_lose()
+    }
+
+    pub fn total_gain(&self) -> isize {
+        self.scenario_results
+            .iter()
+            .fold(0, |total, result| total + result.total_gain())
+    }
+
+    pub fn total_lose(&self) -> isize {
+        self.scenario_results
+            .iter()
+            .fold(0, |total, result| total + result.total_lose())
     }
 
     pub fn is_success(&self) -> bool {
@@ -197,6 +219,8 @@ mod tests {
 
         let benchmark_result = benchmark.start().await;
         assert_eq!(benchmark_result.total_score(), 0);
+        assert_eq!(benchmark_result.total_gain(), 18);
+        assert_eq!(benchmark_result.total_lose(), 18);
         assert_eq!(benchmark_result.is_success(), true);
         assert_eq!(benchmark_result.is_failure(), false);
 

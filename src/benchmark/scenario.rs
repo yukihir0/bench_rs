@@ -17,29 +17,46 @@ impl BenchmarkScenario {
     }
 
     pub async fn run(self, agent: Agent, score: Score, errors: Errors) -> BenchmarkScenarioResult {
+        let mut scenario_result = BenchmarkScenarioResult::new();
+
         for step in self.steps {
-            step(agent.clone(), score.clone(), errors.clone()).await;
+            scenario_result
+                .add_step_result(step(agent.clone(), score.clone(), errors.clone()).await);
         }
 
-        BenchmarkScenarioResult::new(score, errors)
+        scenario_result
     }
 }
 
 pub struct BenchmarkScenarioResult {
-    score: Score,
-    errors: Errors,
+    step_results: Vec<BenchmarkStepResult>,
 }
 
 impl BenchmarkScenarioResult {
-    pub fn new(score: Score, errors: Errors) -> BenchmarkScenarioResult {
+    pub fn new() -> BenchmarkScenarioResult {
         BenchmarkScenarioResult {
-            score: score,
-            errors: errors,
+            step_results: Vec::new(),
         }
     }
 
-    pub fn total_score(&self) -> usize {
-        self.score.total() - self.errors.total_penalty_point()
+    pub fn add_step_result(&mut self, result: BenchmarkStepResult) {
+        self.step_results.push(result);
+    }
+
+    pub fn total_score(&self) -> isize {
+        self.total_gain() - self.total_lose()
+    }
+
+    pub fn total_gain(&self) -> isize {
+        self.step_results
+            .iter()
+            .fold(0, |total, result| total + result.total_gain())
+    }
+
+    pub fn total_lose(&self) -> isize {
+        self.step_results
+            .iter()
+            .fold(0, |total, result| total + result.total_lose())
     }
 }
 
@@ -136,6 +153,8 @@ mod tests {
 
         let benchmark_scenario_result = benchmark_scenario.run(agent, score, errors).await;
         assert_eq!(benchmark_scenario_result.total_score(), 0);
+        assert_eq!(benchmark_scenario_result.total_gain(), 6);
+        assert_eq!(benchmark_scenario_result.total_lose(), 6);
 
         Ok(())
     }
