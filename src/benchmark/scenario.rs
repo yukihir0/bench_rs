@@ -87,9 +87,9 @@ mod tests {
         let agent = Agent::new(base_url);
 
         let mut score = Score::new();
-        score.set_criterion("a", 1);
-        score.set_criterion("b", 2);
-        score.set_criterion("c", 3);
+        score.add_point_table("a", 1);
+        score.add_point_table("b", 2);
+        score.add_point_table("c", 3);
 
         let errors = Errors::new();
 
@@ -179,7 +179,7 @@ mod tests {
         let agent = Agent::new(base_url);
 
         let mut score = Score::new();
-        score.set_criterion("a", 1);
+        score.add_point_table("a", 1);
 
         let errors = Errors::new();
 
@@ -226,7 +226,7 @@ mod tests {
         let agent = Agent::new(base_url);
 
         let mut score = Score::new();
-        score.set_criterion("a", 1);
+        score.add_point_table("a", 1);
 
         let errors = Errors::new();
 
