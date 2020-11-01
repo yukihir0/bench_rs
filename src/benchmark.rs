@@ -81,6 +81,10 @@ impl BenchmarkResult {
         }
     }
 
+    pub fn details(&self) -> Vec<BenchmarkScenarioResult> {
+        self.scenario_results.clone()
+    }
+
     pub fn add_scenario_result(&mut self, result: BenchmarkScenarioResult) {
         self.scenario_results.push(result);
     }
@@ -199,17 +203,17 @@ mod tests {
             })
         }
 
-        let mut benchmark_scenario1 = BenchmarkScenario::new();
+        let mut benchmark_scenario1 = BenchmarkScenario::new("scenario1");
         benchmark_scenario1.add_benchmark_step(step_a);
         benchmark_scenario1.add_benchmark_step(step_b);
         benchmark_scenario1.add_benchmark_step(step_c);
 
-        let mut benchmark_scenario2 = BenchmarkScenario::new();
+        let mut benchmark_scenario2 = BenchmarkScenario::new("scenario2");
         benchmark_scenario2.add_benchmark_step(step_a);
         benchmark_scenario2.add_benchmark_step(step_b);
         benchmark_scenario2.add_benchmark_step(step_c);
 
-        let mut benchmark_scenario3 = BenchmarkScenario::new();
+        let mut benchmark_scenario3 = BenchmarkScenario::new("scenario3");
         benchmark_scenario3.add_benchmark_step(step_a);
         benchmark_scenario3.add_benchmark_step(step_b);
         benchmark_scenario3.add_benchmark_step(step_c);
@@ -266,13 +270,13 @@ mod tests {
             })
         }
 
-        let mut benchmark_scenario1 = BenchmarkScenario::new();
+        let mut benchmark_scenario1 = BenchmarkScenario::new("scenario1");
         benchmark_scenario1.add_benchmark_step(step);
 
-        let mut benchmark_scenario2 = BenchmarkScenario::new();
+        let mut benchmark_scenario2 = BenchmarkScenario::new("scenario2");
         benchmark_scenario2.add_benchmark_step(step);
 
-        let mut benchmark_scenario3 = BenchmarkScenario::new();
+        let mut benchmark_scenario3 = BenchmarkScenario::new("scenario3");
         benchmark_scenario3.add_benchmark_step(step);
 
         benchmark.add_prepare_scenario(benchmark_scenario1);
@@ -323,13 +327,13 @@ mod tests {
             })
         }
 
-        let mut benchmark_scenario1 = BenchmarkScenario::new();
+        let mut benchmark_scenario1 = BenchmarkScenario::new("scenario1");
         benchmark_scenario1.add_benchmark_step(step);
 
-        let mut benchmark_scenario2 = BenchmarkScenario::new();
+        let mut benchmark_scenario2 = BenchmarkScenario::new("scenario2");
         benchmark_scenario2.add_benchmark_step(step);
 
-        let mut benchmark_scenario3 = BenchmarkScenario::new();
+        let mut benchmark_scenario3 = BenchmarkScenario::new("scenario3");
         benchmark_scenario3.add_benchmark_step(step);
 
         benchmark.add_prepare_scenario(benchmark_scenario1);
@@ -339,6 +343,65 @@ mod tests {
         let benchmark_result = benchmark.start().await;
         assert_eq!(benchmark_result.is_success(), false);
         assert_eq!(benchmark_result.is_failure(), true);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn test_benchmark_result_detail() -> Result<(), ()> {
+        let base_url = &mockito::server_url();
+        let path = "/dummy";
+
+        let _m = mockito::mock("GET", path)
+            .with_status(surf::StatusCode::Ok as usize)
+            .create();
+
+        let agent = Agent::new(base_url);
+
+        let mut score = Score::new();
+        score.add_point_table("a", 1);
+
+        let errors = Errors::new();
+
+        let mut benchmark = Benchmark::new(agent, score, errors);
+
+        fn step(
+            agent: Agent,
+            mut score: Score,
+            mut errors: Errors,
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+            Box::pin(async move {
+                let response = agent.get("/dummy").await;
+                assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
+
+                score.record("a");
+
+                errors.record(BenchmarkError::Penalty {
+                    cause: "error".into(),
+                    point: 1,
+                });
+
+                BenchmarkStepResult::new(score, errors)
+            })
+        }
+
+        let mut benchmark_scenario1 = BenchmarkScenario::new("scenario1");
+        benchmark_scenario1.add_benchmark_step(step);
+
+        let mut benchmark_scenario2 = BenchmarkScenario::new("scenario2");
+        benchmark_scenario2.add_benchmark_step(step);
+
+        let mut benchmark_scenario3 = BenchmarkScenario::new("scenario3");
+        benchmark_scenario3.add_benchmark_step(step);
+
+        benchmark.add_prepare_scenario(benchmark_scenario1);
+        benchmark.add_load_scenario(benchmark_scenario2);
+        benchmark.add_validation_scenario(benchmark_scenario3);
+
+        let benchmark_result = benchmark.start().await;
+        assert_eq!(benchmark_result.details()[0].scenario_name(), "scenario1");
+        assert_eq!(benchmark_result.details()[1].scenario_name(), "scenario2");
+        assert_eq!(benchmark_result.details()[2].scenario_name(), "scenario3");
 
         Ok(())
     }

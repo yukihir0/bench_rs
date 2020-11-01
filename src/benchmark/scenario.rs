@@ -4,12 +4,16 @@ use crate::errors::*;
 use crate::score::*;
 
 pub struct BenchmarkScenario {
+    name: String,
     steps: Vec<BenchmarkStep>,
 }
 
 impl BenchmarkScenario {
-    pub fn new() -> BenchmarkScenario {
-        BenchmarkScenario { steps: Vec::new() }
+    pub fn new(name: impl Into<String>) -> BenchmarkScenario {
+        BenchmarkScenario {
+            name: name.into(),
+            steps: Vec::new(),
+        }
     }
 
     pub fn add_benchmark_step(&mut self, step: BenchmarkStep) {
@@ -17,7 +21,7 @@ impl BenchmarkScenario {
     }
 
     pub async fn run(self, agent: Agent, score: Score, errors: Errors) -> BenchmarkScenarioResult {
-        let mut scenario_result = BenchmarkScenarioResult::new();
+        let mut scenario_result = BenchmarkScenarioResult::new(self.name);
 
         for step in self.steps {
             scenario_result
@@ -28,15 +32,22 @@ impl BenchmarkScenario {
     }
 }
 
+#[derive(Clone)]
 pub struct BenchmarkScenarioResult {
+    scenario_name: String,
     step_results: Vec<BenchmarkStepResult>,
 }
 
 impl BenchmarkScenarioResult {
-    pub fn new() -> BenchmarkScenarioResult {
+    pub fn new(scenario_name: impl Into<String>) -> BenchmarkScenarioResult {
         BenchmarkScenarioResult {
+            scenario_name: scenario_name.into(),
             step_results: Vec::new(),
         }
+    }
+
+    pub fn scenario_name(&self) -> String {
+        self.scenario_name.clone()
     }
 
     pub fn add_step_result(&mut self, result: BenchmarkStepResult) {
@@ -93,7 +104,7 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark_scenario = BenchmarkScenario::new();
+        let mut benchmark_scenario = BenchmarkScenario::new("scenario");
 
         fn step_a(
             agent: Agent,
@@ -183,7 +194,7 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark_scenario = BenchmarkScenario::new();
+        let mut benchmark_scenario = BenchmarkScenario::new("scenario");
 
         fn step(
             agent: Agent,
@@ -230,7 +241,7 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark_scenario = BenchmarkScenario::new();
+        let mut benchmark_scenario = BenchmarkScenario::new("scenario");
 
         fn step(
             agent: Agent,

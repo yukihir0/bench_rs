@@ -6,12 +6,16 @@ extern crate env_logger;
 use anyhow::Result;
 use async_std;
 use bench_rs::agent::*;
+use bench_rs::benchmark::scenario::*;
+use bench_rs::benchmark::step::*;
 use bench_rs::benchmark::*;
 use bench_rs::errors::*;
 use bench_rs::score::*;
 use clap::{App, Arg};
 use log;
 use std::env;
+use std::future::Future;
+use std::pin::Pin;
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -36,19 +40,82 @@ async fn main() -> Result<()> {
     env_logger::init();
 
     let agent = Agent::new(base_url);
-    let score = Score::new();
+
+    let mut score = Score::new();
+    score.add_point_table("a", 1);
+
     let errors = Errors::new();
-    let benchmark = Benchmark::new(agent, score, errors);
+
+    fn prepare_step(
+        _agent: Agent,
+        score: Score,
+        errors: Errors,
+    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        Box::pin(async move { BenchmarkStepResult::new(score, errors) })
+    }
+
+    fn load_step(
+        _agent: Agent,
+        mut score: Score,
+        mut errors: Errors,
+    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        Box::pin(async move {
+            score.record("a");
+
+            errors.record(BenchmarkError::Penalty {
+                cause: "error_a".into(),
+                point: 1,
+            });
+
+            BenchmarkStepResult::new(score, errors)
+        })
+    }
+
+    fn validation_step(
+        _agent: Agent,
+        score: Score,
+        errors: Errors,
+    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        Box::pin(async move { BenchmarkStepResult::new(score, errors) })
+    }
+
+    let mut prepare_scenario = BenchmarkScenario::new("prepare_scenario");
+    prepare_scenario.add_benchmark_step(prepare_step);
+
+    let mut load_scenario = BenchmarkScenario::new("load_scenario");
+    load_scenario.add_benchmark_step(load_step);
+
+    let mut validation_scenario = BenchmarkScenario::new("validation_scenario");
+    validation_scenario.add_benchmark_step(validation_step);
+
+    let mut benchmark = Benchmark::new(agent, score, errors);
+    benchmark.add_prepare_scenario(prepare_scenario);
+    benchmark.add_load_scenario(load_scenario);
+    benchmark.add_validation_scenario(validation_scenario);
+
     let benchmark_result = benchmark.start().await;
 
     if benchmark_result.is_success() {
-        log::info!("Benchmark: Success");
+        log::info!(
+            "Success / Score: {} ({} - {})",
+            benchmark_result.total_score(),
+            benchmark_result.total_gain(),
+            benchmark_result.total_lose()
+        );
+
+        log::info!("Detail:");
+        for result in benchmark_result.details() {
+            log::info!(
+                "  {} : {} ({} - {})",
+                result.scenario_name(),
+                result.total_score(),
+                result.total_gain(),
+                result.total_lose()
+            );
+        }
     } else {
-        log::info!("Benchmark: Failure");
+        log::info!("Failure");
     }
-    log::info!("total: {}", benchmark_result.total_score());
-    log::info!("gain: {}", benchmark_result.total_gain());
-    log::info!("lose: {}", benchmark_result.total_lose());
 
     Ok(())
 }

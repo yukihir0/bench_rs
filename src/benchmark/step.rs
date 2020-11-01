@@ -8,6 +8,7 @@ use std::pin::Pin;
 pub type BenchmarkStep =
     fn(Agent, Score, Errors) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>>;
 
+#[derive(Clone)]
 pub struct BenchmarkStepResult {
     score: Score,
     errors: Errors,
