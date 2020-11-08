@@ -247,6 +247,7 @@ dependencies = [
  "env_logger",
  "log",
  "mockito",
+ "num_cpus",
  "serde",
  "serde_json",
  "surf",

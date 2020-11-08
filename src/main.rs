@@ -13,6 +13,7 @@ use bench_rs::errors::*;
 use bench_rs::score::*;
 use clap::{App, Arg};
 use log;
+use num_cpus;
 use std::env;
 use std::future::Future;
 use std::pin::Pin;
@@ -32,9 +33,22 @@ async fn main() -> Result<()> {
                 .takes_value(true)
                 .required(true),
         )
+        .arg(
+            Arg::new("parallels")
+                .about("benchmark parallels")
+                .short('p')
+                .long("parallels")
+                .value_name("PARALLELS")
+                .takes_value(true)
+                .required(false),
+        )
         .get_matches();
 
     let base_url = matches.value_of("base_url").unwrap();
+    let parallels = match matches.value_of("parallels") {
+        Some(parallels) => parallels.parse::<usize>().unwrap(),
+        None => num_cpus::get(),
+    };
 
     env::set_var("RUST_LOG", "info");
     env_logger::init();
@@ -88,7 +102,7 @@ async fn main() -> Result<()> {
     let mut validation_scenario = BenchmarkScenario::new("validation_scenario");
     validation_scenario.add_benchmark_step(validation_step);
 
-    let mut benchmark = Benchmark::new(agent, score, errors);
+    let mut benchmark = Benchmark::new(agent, score, errors, parallels);
     benchmark.add_prepare_scenario(prepare_scenario);
     benchmark.add_load_scenario(load_scenario);
     benchmark.add_validation_scenario(validation_scenario);

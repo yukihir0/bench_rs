@@ -13,10 +13,11 @@ pub struct Benchmark {
     prepare_scenarios: Vec<BenchmarkScenario>,
     load_scenarios: Vec<BenchmarkScenario>,
     validation_scenarios: Vec<BenchmarkScenario>,
+    parallels: usize,
 }
 
 impl Benchmark {
-    pub fn new(agent: Agent, score: Score, errors: Errors) -> Benchmark {
+    pub fn new(agent: Agent, score: Score, errors: Errors, parallels: usize) -> Benchmark {
         Benchmark {
             agent: agent,
             score: score,
@@ -24,6 +25,7 @@ impl Benchmark {
             prepare_scenarios: Vec::new(),
             load_scenarios: Vec::new(),
             validation_scenarios: Vec::new(),
+            parallels: parallels,
         }
     }
 
@@ -141,7 +143,9 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark = Benchmark::new(agent, score, errors);
+        let parallels = 8;
+
+        let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
         fn step_a(
             agent: Agent,
@@ -248,7 +252,9 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark = Benchmark::new(agent, score, errors);
+        let parallels = 8;
+
+        let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
         fn step(
             agent: Agent,
@@ -306,7 +312,9 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark = Benchmark::new(agent, score, errors);
+        let parallels = 8;
+
+        let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
         fn step(
             agent: Agent,
@@ -363,7 +371,9 @@ mod tests {
 
         let errors = Errors::new();
 
-        let mut benchmark = Benchmark::new(agent, score, errors);
+        let parallels = 8;
+
+        let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
         fn step(
             agent: Agent,
