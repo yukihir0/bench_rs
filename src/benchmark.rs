@@ -8,7 +8,18 @@ use crate::score::*;
 
 use async_std;
 use async_std::task;
-use crossbeam_channel::{bounded, unbounded, RecvError};
+use crossbeam_channel::{bounded, unbounded, Receiver, RecvError, Sender};
+
+enum LoadScenarioWorkMessage {
+    Start(BenchmarkScenario),
+    Stop,
+}
+
+enum LoadScenarioResultMessage {
+    Processed(BenchmarkScenarioResult),
+    Canceled(BenchmarkScenarioResult),
+    Stopped,
+}
 
 pub struct Benchmark {
     agent: Agent,
@@ -59,39 +70,30 @@ impl Benchmark {
         scenario_results
     }
 
-    async fn start_load_scenario(&self) -> Vec<BenchmarkScenarioResult> {
-        enum SourceMessage {
-            Work(BenchmarkScenario),
-            Stopped,
-        }
+    async fn spawn_load_scenario_source(&self, work_sender: Sender<LoadScenarioWorkMessage>) {
+        let load_scenarios = self.load_scenarios.clone();
 
-        enum ProcessorMessage {
-            Result(BenchmarkScenarioResult),
-            Cancel(BenchmarkScenarioResult),
-            Stopped,
-        }
-
-        let (work_sender, work_receiver) = unbounded();
-        let (result_sender, result_receiver) = unbounded();
-
-        // Source
-        let scenarios = self.load_scenarios.clone();
         let _source = task::spawn(async move {
-            for scenario in scenarios {
+            for scenario in load_scenarios {
                 let scenario_name = scenario.clone().name;
-                let _ = work_sender.send(SourceMessage::Work(scenario));
-                log::debug!("[Source] send {}", scenario_name);
+                let _ = work_sender.send(LoadScenarioWorkMessage::Start(scenario));
+                log::debug!("[Source] send start {}", scenario_name);
             }
-            let _ = work_sender.send(SourceMessage::Stopped);
+            let _ = work_sender.send(LoadScenarioWorkMessage::Stop);
             log::debug!("[Source] send stop");
-            drop(work_sender);
         });
+    }
 
-        // Processor
+    async fn spawn_load_scenario_processor(
+        &self,
+        work_receiver: Receiver<LoadScenarioWorkMessage>,
+        result_sender: Sender<LoadScenarioResultMessage>,
+    ) {
         let parallels = self.parallels.clone();
         let agent = self.agent.clone();
         let score = self.score.clone();
         let errors = self.errors.clone();
+
         let _processor = task::spawn(async move {
             let (parallel_sender, parallel_receiver) = bounded(parallels);
             let (processor_result_sender, processor_result_receiver) = unbounded();
@@ -102,12 +104,12 @@ impl Benchmark {
                 crossbeam_channel::select! {
                     recv(work_receiver) -> scenario => {
                         match scenario {
-                            Ok(SourceMessage::Work(scenario)) => {
+                            Ok(LoadScenarioWorkMessage::Start(scenario)) => {
                                 let scenario_name = scenario.clone().name;
                                 let result = BenchmarkScenarioResult::new(scenario_name);
 
                                 if is_receive_exit {
-                                    let _ = result_sender.send(ProcessorMessage::Cancel(result));
+                                    let _ = result_sender.send(LoadScenarioResultMessage::Canceled(result));
                                     continue;
                                 }
 
@@ -126,23 +128,19 @@ impl Benchmark {
                                     let result = scenario
                                         .run(agent.clone(), score.clone(), errors.clone())
                                         .await;
-                                    let _ = result_sender.send(ProcessorMessage::Result(result));
+                                    let _ = result_sender.send(LoadScenarioResultMessage::Processed(result));
                                     let _ = processor_result_sender.send(());
                                     let _ = parallel_receiver.recv();
                                 });
                             },
-                            Ok(SourceMessage::Stopped) => {
+                            Ok(LoadScenarioWorkMessage::Stop) => {
                                 is_receive_exit = true;
                                 if ongoing_workers == 0 {
-                                    let _ = result_sender.send(ProcessorMessage::Stopped);
-                                    drop(result_sender);
-                                    drop(processor_result_sender);
-                                    drop(parallel_sender);
+                                    let _ = result_sender.send(LoadScenarioResultMessage::Stopped);
                                     break;
                                 }
                             }
-                            Err(RecvError) => {
-                            },
+                            Err(RecvError) => {},
                         }
                     },
                     recv(processor_result_receiver) -> msg => {
@@ -150,38 +148,38 @@ impl Benchmark {
                             Ok(()) => {
                                 ongoing_workers -= 1;
                                 if is_receive_exit && ongoing_workers == 0 {
-                                    let _ = result_sender.send(ProcessorMessage::Stopped);
-                                    drop(result_sender);
-                                    drop(processor_result_sender);
-                                    drop(parallel_sender);
+                                    let _ = result_sender.send(LoadScenarioResultMessage::Stopped);
                                     break;
                                 }
                             },
-                            Err(RecvError) => {
-                            },
+                            Err(RecvError) => {},
                         }
                     },
                 }
             }
         });
+    }
 
-        // Consumer
+    async fn spawn_load_scenario_consumer(
+        &self,
+        result_receiver: Receiver<LoadScenarioResultMessage>,
+    ) -> Vec<BenchmarkScenarioResult> {
         let consumer = task::spawn(async move {
             let mut scenario_results = Vec::new();
 
             loop {
                 match result_receiver.recv() {
-                    Ok(ProcessorMessage::Result(result)) => {
+                    Ok(LoadScenarioResultMessage::Processed(result)) => {
                         let scenario_name = result.clone().scenario_name;
                         scenario_results.push(result);
-                        log::debug!("[Consumer] receive result {}", scenario_name);
+                        log::debug!("[Consumer] receive processed {}", scenario_name);
                     }
-                    Ok(ProcessorMessage::Cancel(result)) => {
+                    Ok(LoadScenarioResultMessage::Canceled(result)) => {
                         let scenario_name = result.clone().scenario_name;
-                        log::debug!("[Consumer] receive cancel {}", scenario_name);
+                        log::debug!("[Consumer] receive canceled {}", scenario_name);
                     }
-                    Ok(ProcessorMessage::Stopped) => {
-                        log::debug!("[Consumer] receive stop");
+                    Ok(LoadScenarioResultMessage::Stopped) => {
+                        log::debug!("[Consumer] receive stoped");
                         break;
                     }
                     Err(RecvError) => {}
@@ -192,6 +190,16 @@ impl Benchmark {
         });
 
         consumer.await
+    }
+
+    async fn start_load_scenario(&self) -> Vec<BenchmarkScenarioResult> {
+        let (work_sender, work_receiver) = unbounded();
+        let (result_sender, result_receiver) = unbounded();
+
+        self.spawn_load_scenario_source(work_sender).await;
+        self.spawn_load_scenario_processor(work_receiver, result_sender)
+            .await;
+        self.spawn_load_scenario_consumer(result_receiver).await
     }
 
     async fn start_validation_scenario(&self) -> Vec<BenchmarkScenarioResult> {
