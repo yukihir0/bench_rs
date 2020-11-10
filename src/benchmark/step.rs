@@ -6,7 +6,7 @@ use std::future::Future;
 use std::pin::Pin;
 
 pub type BenchmarkStep =
-    fn(Agent, Score, Errors) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>>;
+    fn(Agent, Score, Errors) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>>;
 
 #[derive(Clone)]
 pub struct BenchmarkStepResult {

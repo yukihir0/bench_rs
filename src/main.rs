@@ -1,6 +1,7 @@
 extern crate bench_rs;
 #[macro_use]
 extern crate clap;
+extern crate crossbeam_channel;
 extern crate env_logger;
 
 use anyhow::Result;
@@ -50,7 +51,11 @@ async fn main() -> Result<()> {
         None => num_cpus::get(),
     };
 
-    env::set_var("RUST_LOG", "info");
+    let key = "RUST_LOG";
+    match env::var("RUST_LOG") {
+        Ok(_) => {}
+        Err(_) => env::set_var(key, "info"),
+    }
     env_logger::init();
 
     let agent = Agent::new(base_url);
@@ -64,7 +69,7 @@ async fn main() -> Result<()> {
         _agent: Agent,
         score: Score,
         errors: Errors,
-    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
         Box::pin(async move { BenchmarkStepResult::new(score, errors) })
     }
 
@@ -72,7 +77,7 @@ async fn main() -> Result<()> {
         _agent: Agent,
         mut score: Score,
         mut errors: Errors,
-    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
         Box::pin(async move {
             score.record("a");
 
@@ -89,22 +94,26 @@ async fn main() -> Result<()> {
         _agent: Agent,
         score: Score,
         errors: Errors,
-    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
         Box::pin(async move { BenchmarkStepResult::new(score, errors) })
     }
 
     let mut prepare_scenario = BenchmarkScenario::new("prepare_scenario");
     prepare_scenario.add_benchmark_step(prepare_step);
 
-    let mut load_scenario = BenchmarkScenario::new("load_scenario");
-    load_scenario.add_benchmark_step(load_step);
+    let mut load_scenario1 = BenchmarkScenario::new("load_scenario1");
+    load_scenario1.add_benchmark_step(load_step);
+
+    let mut load_scenario2 = BenchmarkScenario::new("load_scenario2");
+    load_scenario2.add_benchmark_step(load_step);
 
     let mut validation_scenario = BenchmarkScenario::new("validation_scenario");
     validation_scenario.add_benchmark_step(validation_step);
 
     let mut benchmark = Benchmark::new(agent, score, errors, parallels);
     benchmark.add_prepare_scenario(prepare_scenario);
-    benchmark.add_load_scenario(load_scenario);
+    benchmark.add_load_scenario(load_scenario1);
+    benchmark.add_load_scenario(load_scenario2);
     benchmark.add_validation_scenario(validation_scenario);
 
     let benchmark_result = benchmark.start().await;

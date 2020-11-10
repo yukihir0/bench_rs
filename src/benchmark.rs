@@ -6,6 +6,10 @@ use crate::benchmark::scenario::*;
 use crate::errors::*;
 use crate::score::*;
 
+use async_std;
+use async_std::task;
+use crossbeam_channel::{bounded, unbounded, RecvError};
+
 pub struct Benchmark {
     agent: Agent,
     score: Score,
@@ -41,32 +45,192 @@ impl Benchmark {
         self.validation_scenarios.push(scenario);
     }
 
-    pub async fn start(self) -> BenchmarkResult {
+    async fn start_prepare_scenario(&self) -> Vec<BenchmarkScenarioResult> {
+        let mut scenario_results = Vec::new();
+
+        for scenario in self.prepare_scenarios.clone() {
+            scenario_results.push(
+                scenario
+                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
+                    .await,
+            );
+        }
+
+        scenario_results
+    }
+
+    async fn start_load_scenario(&self) -> Vec<BenchmarkScenarioResult> {
+        enum SourceMessage {
+            Work(BenchmarkScenario),
+            Stopped,
+        }
+
+        enum ProcessorMessage {
+            Result(BenchmarkScenarioResult),
+            Cancel(BenchmarkScenarioResult),
+            Stopped,
+        }
+
+        let (work_sender, work_receiver) = unbounded();
+        let (result_sender, result_receiver) = unbounded();
+
+        // Source
+        let scenarios = self.load_scenarios.clone();
+        let _source = task::spawn(async move {
+            for scenario in scenarios {
+                let scenario_name = scenario.clone().name;
+                let _ = work_sender.send(SourceMessage::Work(scenario));
+                log::debug!("[Source] send {}", scenario_name);
+            }
+            let _ = work_sender.send(SourceMessage::Stopped);
+            log::debug!("[Source] send stop");
+            drop(work_sender);
+        });
+
+        // Processor
+        let parallels = self.parallels.clone();
+        let agent = self.agent.clone();
+        let score = self.score.clone();
+        let errors = self.errors.clone();
+        let _processor = task::spawn(async move {
+            let (parallel_sender, parallel_receiver) = bounded(parallels);
+            let (processor_result_sender, processor_result_receiver) = unbounded();
+            let mut is_receive_exit = false;
+            let mut ongoing_workers = 0;
+
+            loop {
+                crossbeam_channel::select! {
+                    recv(work_receiver) -> scenario => {
+                        match scenario {
+                            Ok(SourceMessage::Work(scenario)) => {
+                                let scenario_name = scenario.clone().name;
+                                let result = BenchmarkScenarioResult::new(scenario_name);
+
+                                if is_receive_exit {
+                                    let _ = result_sender.send(ProcessorMessage::Cancel(result));
+                                    continue;
+                                }
+
+                                let result_sender = result_sender.clone();
+                                let processor_result_sender = processor_result_sender.clone();
+                                let parallel_receiver = parallel_receiver.clone();
+
+                                let _ = parallel_sender.send(());
+                                ongoing_workers += 1;
+
+                                let agent = agent.clone();
+                                let score = score.clone();
+                                let errors = errors.clone();
+                                let _worker = task::spawn(async move {
+                                    // task::sleep(std::time::Duration::from_secs(1)).await;
+                                    let result = scenario
+                                        .run(agent.clone(), score.clone(), errors.clone())
+                                        .await;
+                                    let _ = result_sender.send(ProcessorMessage::Result(result));
+                                    let _ = processor_result_sender.send(());
+                                    let _ = parallel_receiver.recv();
+                                });
+                            },
+                            Ok(SourceMessage::Stopped) => {
+                                is_receive_exit = true;
+                                if ongoing_workers == 0 {
+                                    let _ = result_sender.send(ProcessorMessage::Stopped);
+                                    drop(result_sender);
+                                    drop(processor_result_sender);
+                                    drop(parallel_sender);
+                                    break;
+                                }
+                            }
+                            Err(RecvError) => {
+                            },
+                        }
+                    },
+                    recv(processor_result_receiver) -> msg => {
+                        match msg {
+                            Ok(()) => {
+                                ongoing_workers -= 1;
+                                if is_receive_exit && ongoing_workers == 0 {
+                                    let _ = result_sender.send(ProcessorMessage::Stopped);
+                                    drop(result_sender);
+                                    drop(processor_result_sender);
+                                    drop(parallel_sender);
+                                    break;
+                                }
+                            },
+                            Err(RecvError) => {
+                            },
+                        }
+                    },
+                }
+            }
+        });
+
+        // Consumer
+        let consumer = task::spawn(async move {
+            let mut scenario_results = Vec::new();
+
+            loop {
+                match result_receiver.recv() {
+                    Ok(ProcessorMessage::Result(result)) => {
+                        let scenario_name = result.clone().scenario_name;
+                        scenario_results.push(result);
+                        log::debug!("[Consumer] receive result {}", scenario_name);
+                    }
+                    Ok(ProcessorMessage::Cancel(result)) => {
+                        let scenario_name = result.clone().scenario_name;
+                        log::debug!("[Consumer] receive cancel {}", scenario_name);
+                    }
+                    Ok(ProcessorMessage::Stopped) => {
+                        log::debug!("[Consumer] receive stop");
+                        break;
+                    }
+                    Err(RecvError) => {}
+                }
+            }
+
+            scenario_results
+        });
+
+        consumer.await
+    }
+
+    async fn start_validation_scenario(&self) -> Vec<BenchmarkScenarioResult> {
+        let mut scenario_results = Vec::new();
+
+        for scenario in self.validation_scenarios.clone() {
+            scenario_results.push(
+                scenario
+                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
+                    .await,
+            );
+        }
+
+        scenario_results
+    }
+
+    pub async fn start(&self) -> BenchmarkResult {
         let mut benchmark_result = BenchmarkResult::new();
 
-        for scenario in self.prepare_scenarios {
-            benchmark_result.add_scenario_result(
-                scenario
-                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
-                    .await,
-            );
-        }
+        let _: Vec<_> = self
+            .start_prepare_scenario()
+            .await
+            .into_iter()
+            .map(|result| benchmark_result.add_scenario_result(result))
+            .collect();
 
-        for scenario in self.load_scenarios {
-            benchmark_result.add_scenario_result(
-                scenario
-                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
-                    .await,
-            );
-        }
+        let _: Vec<_> = self
+            .start_load_scenario()
+            .await
+            .into_iter()
+            .map(|result| benchmark_result.add_scenario_result(result))
+            .collect();
 
-        for scenario in self.validation_scenarios {
-            benchmark_result.add_scenario_result(
-                scenario
-                    .run(self.agent.clone(), self.score.clone(), self.errors.clone())
-                    .await,
-            );
-        }
+        let _: Vec<_> = self
+            .start_validation_scenario()
+            .await
+            .into_iter()
+            .map(|result| benchmark_result.add_scenario_result(result))
+            .collect();
 
         benchmark_result
     }
@@ -151,7 +315,7 @@ mod tests {
             agent: Agent,
             mut score: Score,
             mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -171,7 +335,7 @@ mod tests {
             agent: Agent,
             mut score: Score,
             mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -191,7 +355,7 @@ mod tests {
             agent: Agent,
             mut score: Score,
             mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -260,7 +424,7 @@ mod tests {
             agent: Agent,
             mut score: Score,
             mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -320,7 +484,7 @@ mod tests {
             agent: Agent,
             mut score: Score,
             mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -379,7 +543,7 @@ mod tests {
             agent: Agent,
             mut score: Score,
             mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult>>> {
+        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
