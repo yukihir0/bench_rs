@@ -5,7 +5,7 @@ use crate::score::*;
 use std::future::Future;
 use std::pin::Pin;
 
-pub type BoxFutBenchmarkStep = Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>>;
+pub type BoxFutBenchmarkStep = Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send + 'static>>;
 pub type BenchmarkStep = fn(Agent, Score, Errors) -> BoxFutBenchmarkStep;
 
 #[derive(Clone)]
