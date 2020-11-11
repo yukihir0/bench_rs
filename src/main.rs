@@ -16,8 +16,6 @@ use clap::{App, Arg};
 use log;
 use num_cpus;
 use std::env;
-use std::future::Future;
-use std::pin::Pin;
 
 #[async_std::main]
 async fn main() -> Result<()> {
@@ -65,19 +63,11 @@ async fn main() -> Result<()> {
 
     let errors = Errors::new();
 
-    fn prepare_step(
-        _agent: Agent,
-        score: Score,
-        errors: Errors,
-    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+    fn prepare_step(_agent: Agent, score: Score, errors: Errors) -> BoxFutBenchmarkStep {
         Box::pin(async move { BenchmarkStepResult::new(score, errors) })
     }
 
-    fn load_step(
-        _agent: Agent,
-        mut score: Score,
-        mut errors: Errors,
-    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+    fn load_step(_agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
         Box::pin(async move {
             score.record("a");
 
@@ -90,11 +80,7 @@ async fn main() -> Result<()> {
         })
     }
 
-    fn validation_step(
-        _agent: Agent,
-        score: Score,
-        errors: Errors,
-    ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+    fn validation_step(_agent: Agent, score: Score, errors: Errors) -> BoxFutBenchmarkStep {
         Box::pin(async move { BenchmarkStepResult::new(score, errors) })
     }
 

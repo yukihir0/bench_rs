@@ -294,8 +294,6 @@ impl BenchmarkResult {
 mod tests {
     use crate::benchmark::step::*;
     use crate::benchmark::*;
-    use std::future::Future;
-    use std::pin::Pin;
 
     #[async_std::test]
     async fn test_benchmark() -> Result<(), ()> {
@@ -319,11 +317,7 @@ mod tests {
 
         let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
-        fn step_a(
-            agent: Agent,
-            mut score: Score,
-            mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+        fn step_a(agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -339,11 +333,7 @@ mod tests {
             })
         }
 
-        fn step_b(
-            agent: Agent,
-            mut score: Score,
-            mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+        fn step_b(agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -359,11 +349,7 @@ mod tests {
             })
         }
 
-        fn step_c(
-            agent: Agent,
-            mut score: Score,
-            mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+        fn step_c(agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -428,11 +414,7 @@ mod tests {
 
         let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
-        fn step(
-            agent: Agent,
-            mut score: Score,
-            mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+        fn step(agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -488,11 +470,7 @@ mod tests {
 
         let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
-        fn step(
-            agent: Agent,
-            mut score: Score,
-            mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+        fn step(agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
@@ -547,11 +525,7 @@ mod tests {
 
         let mut benchmark = Benchmark::new(agent, score, errors, parallels);
 
-        fn step(
-            agent: Agent,
-            mut score: Score,
-            mut errors: Errors,
-        ) -> Pin<Box<dyn Future<Output = BenchmarkStepResult> + Send>> {
+        fn step(agent: Agent, mut score: Score, mut errors: Errors) -> BoxFutBenchmarkStep {
             Box::pin(async move {
                 let response = agent.get("/dummy").await;
                 assert_eq!(response.unwrap().status(), surf::StatusCode::Ok);
