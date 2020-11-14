@@ -6,7 +6,6 @@ use crate::benchmark::scenario::*;
 use crate::errors::*;
 use crate::score::*;
 
-// use async_std;
 use async_std::task;
 use crossbeam_channel::{bounded, unbounded, Receiver, RecvError, Sender};
 
